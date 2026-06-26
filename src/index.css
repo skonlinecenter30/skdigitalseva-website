@@ -1,0 +1,150 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Playfair+Display:wght@600;700&family=Noto+Sans+Kannada:wght@400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  *, *::before, *::after { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: 'Inter', system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    background-color: #FFFFFF;
+    color: #334155;
+    line-height: 1.6;
+  }
+  .font-kn { font-family: 'Noto Sans Kannada', sans-serif; }
+  .font-display { font-family: 'Playfair Display', serif; }
+
+  /* Better typography */
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Inter', system-ui, sans-serif;
+    font-weight: 700;
+    line-height: 1.2;
+  }
+}
+
+@layer components {
+  /* ---- Buttons ---- */
+  .btn-primary {
+    @apply bg-gov-main hover:bg-gov-dark text-white font-semibold px-6 py-3 rounded-lg
+           transition-all duration-200 shadow-soft hover:shadow-card-hover active:scale-[0.98] inline-flex items-center justify-center gap-2;
+  }
+  .btn-secondary {
+    @apply bg-white hover:bg-gov-pale text-gov-main font-semibold px-6 py-3 rounded-lg
+           border-2 border-gov-main transition-all duration-200 hover:shadow-soft active:scale-[0.98] inline-flex items-center justify-center gap-2;
+  }
+  .btn-gold {
+    @apply bg-gold hover:bg-gold-dark text-white font-semibold px-6 py-3 rounded-lg
+           transition-all duration-200 shadow-gold hover:shadow-lg active:scale-[0.98] inline-flex items-center justify-center gap-2;
+  }
+  .btn-outline-white {
+    @apply border-2 border-white text-white hover:bg-white hover:text-gov-main font-semibold px-6 py-3 rounded-lg
+           transition-all duration-200 inline-flex items-center justify-center gap-2;
+  }
+  .btn-whatsapp {
+    @apply bg-green-500 hover:bg-green-600 text-white font-semibold px-6 py-3 rounded-lg
+           transition-all duration-200 shadow-soft hover:shadow-lg active:scale-[0.98] inline-flex items-center justify-center gap-2;
+  }
+
+  /* ---- Cards ---- */
+  .card {
+    @apply bg-white rounded-xl shadow-card hover:shadow-card-hover transition-all duration-300 border border-slate-100;
+  }
+  .card-service {
+    @apply bg-white rounded-xl shadow-card hover:shadow-card-hover transition-all duration-300 border-2 border-transparent
+           hover:border-gov-main cursor-pointer;
+  }
+  .card-cream {
+    @apply bg-cream rounded-xl shadow-card border border-gold-pale;
+  }
+
+  /* ---- Form ---- */
+  .input-field {
+    @apply w-full px-4 py-3 border border-slate-200 rounded-lg bg-white
+           focus:outline-none focus:ring-2 focus:ring-gov-main focus:border-transparent
+           transition-all duration-200 text-slate-800 placeholder-slate-400 text-sm;
+  }
+  .label {
+    @apply block text-sm font-semibold text-slate-700 mb-1.5;
+  }
+  .select-field {
+    @apply w-full px-4 py-3 border border-slate-200 rounded-lg bg-white
+           focus:outline-none focus:ring-2 focus:ring-gov-main focus:border-transparent
+           transition-all duration-200 text-slate-800 text-sm appearance-none cursor-pointer;
+  }
+
+  /* ---- Typography ---- */
+  .section-tag {
+    @apply inline-flex items-center gap-2 bg-gov-pale text-gov-main font-semibold
+           px-4 py-1.5 rounded-full text-sm mb-4 border border-gov-main/20;
+  }
+  .section-heading {
+    @apply text-3xl md:text-4xl font-bold text-slate-900 mb-3 leading-tight;
+  }
+  .section-sub {
+    @apply text-base text-slate-500 max-w-2xl mx-auto leading-relaxed;
+  }
+  .gold-accent {
+    @apply text-gold font-display;
+  }
+  .gov-heading {
+    @apply text-gov-main font-bold;
+  }
+
+  /* ---- Status badges ---- */
+  .badge { @apply font-semibold px-3 py-1 rounded-full text-xs; }
+  .badge-submitted       { @apply bg-blue-100 text-blue-700; }
+  .badge-docs-pending    { @apply bg-amber-100 text-amber-700; }
+  .badge-under-review    { @apply bg-purple-100 text-purple-700; }
+  .badge-processing      { @apply bg-orange-100 text-orange-700; }
+  .badge-completed       { @apply bg-green-100 text-green-700; }
+  .badge-rejected        { @apply bg-red-100 text-red-700; }
+
+  /* ---- Divider ---- */
+  .divider {
+    @apply h-px bg-gradient-to-r from-transparent via-slate-200 to-transparent my-8;
+  }
+
+  /* ---- Gold divider ---- */
+  .gold-divider {
+    @apply h-0.5 bg-gradient-to-r from-transparent via-gold to-transparent opacity-50;
+  }
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 8px; }
+::-webkit-scrollbar-track { background: #f8fafc; }
+::-webkit-scrollbar-thumb { background: #0F5132; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #0a3d26; }
+
+/* WhatsApp pulse */
+@keyframes wa-pulse {
+  0%   { box-shadow: 0 0 0 0 rgba(34,197,94,0.5); }
+  70%  { box-shadow: 0 0 0 14px rgba(34,197,94,0); }
+  100% { box-shadow: 0 0 0 0 rgba(34,197,94,0); }
+}
+.wa-pulse { animation: wa-pulse 2.2s infinite; }
+
+/* Hero gradient blob */
+.hero-blob {
+  background: radial-gradient(ellipse at 60% 50%, rgba(212,175,55,0.08) 0%, transparent 70%);
+}
+
+/* Kannada text */
+.text-kn { font-family: 'Noto Sans Kannada', sans-serif; }
+
+/* Professional underlines */
+.underline-gold {
+  text-decoration: underline;
+  text-decoration-color: #D4AF37;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 4px;
+}
+
+/* Smooth focus states */
+.focus-gold:focus {
+  @apply ring-2 ring-gold ring-offset-2;
+}
