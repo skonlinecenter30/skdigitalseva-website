@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import AdminDashboard from './AdminDashboard'; import React, { useState } from 'react';
 import { Eye, EyeOff, Shield, AlertCircle, Lock, RefreshCw } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
@@ -49,6 +49,7 @@ return;
     await refreshProfile();
     setLoading(false);
     onNavigate('admin');
+  return <AdminDashboard onNavigate={onNavigate} />;
   };
 
   return (
