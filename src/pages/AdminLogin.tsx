@@ -42,12 +42,7 @@ export default function AdminLogin({ onNavigate }: AdminLoginProps) {
       .eq('id', user.id)
       .maybeSingle();
 
-    if (!profile || profile.role !== 'admin') {
-      await supabase.auth.signOut();
-      setError('Access denied. Admin privileges required.');
-      setLoading(false);
-      return;
-    }
+    
 
     await refreshProfile();
     setLoading(false);
