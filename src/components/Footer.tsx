@@ -1,5 +1,5 @@
 import React from 'react';
-import { FileText, Phone, Mail, Globe, MapPin, Shield, ExternalLink } from 'lucide-react';
+import { FileText, Phone, Mail, Globe, MapPin, Shield, ExternalLink, Lock } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
 interface FooterProps { onNavigate: (page: string) => void; }
@@ -126,9 +126,19 @@ export default function Footer({ onNavigate }: FooterProps) {
               ? ' SK Digital Seva ಒಂದು ಸ್ವತಂತ್ರ ಸೇವಾ ಪೂರೈಕೆದಾರವಾಗಿದೆ. ನಾವು ಕರ್ನಾಟಕ ಸರ್ಕಾರದೊಂದಿಗೆ ಸಂಬಂಧ ಹೊಂದಿಲ್ಲ.'
               : ' SK Digital Seva is an independent service provider helping citizens with online documentation. We are not affiliated with Karnataka Government.'}
           </p>
-          <p className="text-xs text-white/40 text-center mt-2">
-            &copy; 2024 SK Digital Seva | SKDigitalSeva.in | All rights reserved.
-          </p>
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-2 sm:gap-4 mt-3">
+            <p className="text-xs text-white/40">
+              &copy; 2024 SK Digital Seva | SKDigitalSeva.in | All rights reserved.
+            </p>
+            {/* Subtle Admin Link */}
+            <button
+              onClick={() => onNavigate('admin-login')}
+              className="flex items-center gap-1.5 text-xs text-white/30 hover:text-white/60 transition-colors group"
+            >
+              <Lock className="w-3 h-3 group-hover:text-gold transition-colors" />
+              <span>Admin</span>
+            </button>
+          </div>
         </div>
       </div>
     </footer>
