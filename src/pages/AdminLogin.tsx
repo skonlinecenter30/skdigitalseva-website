@@ -1,4 +1,4 @@
-import AdminDashboard from './AdminDashboard'; import React, { useState } from 'react';
+import React, { useState } from 'react';
 import { Eye, EyeOff, Shield, AlertCircle, Lock, RefreshCw } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
@@ -15,7 +15,8 @@ export default function AdminLogin({ onNavigate }: AdminLoginProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit(onNavigate('admin');
+return;) = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setLoading(true);
@@ -38,7 +39,14 @@ return;
       return;
     }
 
-    const { data: profile } = await supabase
+    const { data: profile }if (!profile || profile.role !== 'admin') {
+  setError('Access denied. Admin account required.');
+  await supabase.auth.signOut();
+  setLoading(false);
+  return;
+}await refreshProfile();
+setLoading(false);
+onNavigate('admin'); = await supabase
       .from('profiles')
       .select('role')
       .eq('id', user.id)
@@ -53,6 +61,4 @@ return;
   };
 
   return (
-    <AdminDashboard onNavigate={onNavigate} />
-    )
-    
+   
