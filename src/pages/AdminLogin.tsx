@@ -44,15 +44,14 @@ return;
       .eq('id', user.id)
       .maybeSingle();
 
-    
 
+    
     await refreshProfile();
     setLoading(false);
     onNavigate('admin');
- 
   };
 
   return (
     <AdminDashboard onNavigate={onNavigate} />
     )
-    
+   } 
