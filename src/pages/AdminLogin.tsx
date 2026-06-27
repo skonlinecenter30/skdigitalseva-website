@@ -11,8 +11,8 @@ export default function AdminLogin({ onNavigate }: { onNavigate: (page: string) 
       <div className="max-w-md w-full bg-slate-800/50 backdrop-blur-sm p-8 rounded-2xl border border-slate-700/50 shadow-2xl">
         <h2 className="text-2xl font-bold text-white mb-6 text-center">Admin Portal</h2>
         <p className="text-slate-300 text-center text-sm">
-          Please contact system administrator to manage roles.
-        </p>
+          
+        
       </div>
     </div>
   );
