@@ -73,10 +73,26 @@ export default function ApplyPage({ defaultService, onNavigate }: ApplyPageProps
   const handleFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true); setError('');
+
+    // Get the customer session ID from the database
+    let sessionId: string | null = null;
+    if (customerSession?.token) {
+      const { data: sessionData } = await supabase
+        .from('customer_sessions')
+        .select('id')
+        .eq('token', customerSession.token)
+        .maybeSingle();
+      sessionId = sessionData?.id || null;
+    }
+
     const {data, error: err} = await supabase.from('applications').insert({
-      ...form, service_type: svcType,
+      ...form,
+      service_type: svcType,
       payment_amount: selectedInfo.fee,
       status: 'submitted',
+      customer_phone: customerSession?.phone || form.applicant_phone,
+      customer_session_id: sessionId,
+      user_id: null, // Explicitly null for phone-based customers
     }).select().single();
     setLoading(false);
     if(err){ setError(err.message); return; }
@@ -92,8 +108,13 @@ export default function ApplyPage({ defaultService, onNavigate }: ApplyPageProps
       const {error: upErr} = await supabase.storage.from('documents').upload(path, f, {upsert:false});
       if(!upErr){
         await supabase.from('documents').insert({
-          application_id: appId, document_type:'uploaded',
-          file_name: f.name, file_path: path, file_size: f.size, mime_type: f.type,
+          application_id: appId,
+          document_type:'uploaded',
+          file_name: f.name,
+          file_path: path,
+          file_size: f.size,
+          mime_type: f.type,
+          user_id: null, // No user_id for phone-based customers
         });
       }
     }
