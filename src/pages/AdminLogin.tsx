@@ -18,89 +18,111 @@ export default function AdminLogin({ onNavigate }: AdminLoginProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
     setLoading(true);
     setError("");
 
-    const { error: loginErr } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
+    try {
+      // Login
+      const { error: loginError } =
+        await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
 
-    if (loginErr) {
-      setError(loginErr.message);
+      if (loginError) throw loginError;
+
+      // Get User
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) throw new Error("User not found.");
+
+      console.log("User ID:", user.id);
+
+      // Get Profile
+      const { data: profile, error: profileError } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("id", user.id)
+        .single();
+
+      console.log("Profile:", profile);
+      console.log("Profile Error:", profileError);
+
+      if (profileError) {
+        throw new Error("Profile not found.");
+      }
+
+      if (profile.role !== "admin") {
+        await supabase.auth.signOut();
+        throw new Error("Access denied. Admin account required.");
+      }
+
+      await refreshProfile();
+
+      onNavigate("admin");
+
+    } catch (err: any) {
+      setError(err.message || "Login failed.");
+    } finally {
       setLoading(false);
-      return;
     }
-
-    const { data: { user } } = await supabase.auth.getUser();
-
-    if (!user) {
-      setError("Authentication failed.");
-      setLoading(false);
-      return;
-    }
-
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("role")
-      .eq("id", user.id)
-      .single();
-
-    if (!profile || profile.role !== "admin") {
-      await supabase.auth.signOut();
-      setError("Access denied. Admin account required.");
-      setLoading(false);
-      return;
-    }
-
-    await refreshProfile();
-    setLoading(false);
-    onNavigate("admin");
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-100 p-4">
-      <form onSubmit={handleSubmit} className="bg-white shadow-xl rounded-xl p-8 w-full max-w-md">
-        <div className="flex justify-center mb-4">
-          <Shield className="w-12 h-12 text-blue-700"/>
+    <div className="min-h-screen flex items-center justify-center bg-slate-100">
+      <form
+        onSubmit={handleSubmit}
+        className="bg-white p-8 rounded-xl shadow-xl w-full max-w-md"
+      >
+        <div className="flex justify-center mb-5">
+          <Shield className="w-12 h-12 text-blue-600" />
         </div>
-        <h1 className="text-2xl font-bold text-center mb-6">Admin Login</h1>
+
+        <h2 className="text-2xl font-bold text-center mb-6">
+          Admin Login
+        </h2>
 
         {error && (
-          <div className="flex items-center gap-2 bg-red-100 text-red-700 p-3 rounded mb-4">
-            <AlertCircle className="w-5 h-5"/>
-            <span>{error}</span>
+          <div className="bg-red-100 text-red-700 p-3 rounded-lg mb-4 flex gap-2">
+            <AlertCircle size={20} />
+            {error}
           </div>
         )}
 
-        <label className="block mb-2 font-medium">Email</label>
         <input
-          className="w-full border rounded-lg p-3 mb-4"
           type="email"
+          placeholder="Admin Email"
+          className="w-full border p-3 rounded-lg mb-4"
           value={email}
-          onChange={(e)=>setEmail(e.target.value)}
-          required
+          onChange={(e) => setEmail(e.target.value)}
         />
 
-        <label className="block mb-2 font-medium">Password</label>
-        <div className="relative mb-6">
+        <div className="relative mb-5">
           <input
-            className="w-full border rounded-lg p-3 pr-10"
-            type={showPass?"text":"password"}
+            type={showPass ? "text" : "password"}
+            placeholder="Password"
+            className="w-full border p-3 rounded-lg"
             value={password}
-            onChange={(e)=>setPassword(e.target.value)}
-            required
+            onChange={(e) => setPassword(e.target.value)}
           />
-          <button type="button" className="absolute right-3 top-3" onClick={()=>setShowPass(!showPass)}>
-            {showPass?<EyeOff size={20}/>:<Eye size={20}/>}
+
+          <button
+            type="button"
+            className="absolute right-3 top-3"
+            onClick={() => setShowPass(!showPass)}
+          >
+            {showPass ? <EyeOff /> : <Eye />}
           </button>
         </div>
 
         <button
           disabled={loading}
-          className="w-full bg-blue-700 text-white rounded-lg p-3 font-semibold"
+          className="w-full bg-blue-600 text-white p-3 rounded-lg font-semibold"
         >
-          {loading?"Signing in...":"Login"}
+          {loading ? "Signing In..." : "Login"}
         </button>
       </form>
     </div>
