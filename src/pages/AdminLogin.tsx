@@ -7,7 +7,6 @@ interface AdminLoginProps {
   onNavigate: (page: string) => void;
 }
 
-// Admin email that should always have admin role
 const ADMIN_EMAIL = "admin@skdigitalseva.in";
 
 export default function AdminLogin({ onNavigate }: AdminLoginProps) {
@@ -25,118 +24,177 @@ export default function AdminLogin({ onNavigate }: AdminLoginProps) {
     setError("");
 
     try {
-      console.log("[AdminLogin] Starting login for:", email);
+      console.log("========== ADMIN LOGIN START ==========");
+      console.log("[Step 1] Email input:", email);
 
       // Step 1: Sign in with Supabase Auth
-      const { error: loginError } = await supabase.auth.signInWithPassword({
+      console.log("[Step 2] Calling supabase.auth.signInWithPassword...");
+      const signInResult = await supabase.auth.signInWithPassword({
         email: email.trim().toLowerCase(),
         password,
       });
 
-      if (loginError) {
-        console.error("[AdminLogin] Auth error:", loginError);
-        throw new Error("Invalid email or password.");
+      console.log("[Step 2] Sign in result:", {
+        error: signInResult.error?.message,
+        hasData: !!signInResult.data,
+        hasSession: !!signInResult.data?.session,
+        hasUser: !!signInResult.data?.user,
+      });
+
+      if (signInResult.error) {
+        console.error("[Step 2] AUTH ERROR:", signInResult.error);
+        throw new Error(`Auth failed: ${signInResult.error.message}`);
       }
 
-      console.log("[AdminLogin] Auth successful");
+      // Step 2: Wait a moment for session to be established
+      console.log("[Step 3] Waiting for session to propagate...");
+      await new Promise(resolve => setTimeout(resolve, 500));
 
-      // Step 2: Get the authenticated user
-      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      // Step 3: Get the session
+      console.log("[Step 4] Getting session...");
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
 
-      if (userError || !user) {
-        console.error("[AdminLogin] GetUser error:", userError);
-        throw new Error("Failed to get user session.");
+      console.log("[Step 4] Session result:", {
+        hasSession: !!sessionData?.session,
+        sessionUser: sessionData?.session?.user?.id,
+        sessionEmail: sessionData?.session?.user?.email,
+        error: sessionError?.message,
+      });
+
+      // Step 4: Get the user
+      console.log("[Step 5] Getting user...");
+      const { data: userData, error: userError } = await supabase.auth.getUser();
+
+      console.log("[Step 5] GetUser result:", {
+        user: userData?.user ? {
+          id: userData.user.id,
+          email: userData.user.email,
+        } : null,
+        error: userError?.message,
+      });
+
+      if (userError) {
+        console.error("[Step 5] GETUSER ERROR:", userError);
+        throw new Error(`Failed to get user: ${userError.message}`);
       }
 
-      console.log("[AdminLogin] User ID:", user.id);
-      console.log("[AdminLogin] User email:", user.email);
+      if (!userData?.user) {
+        console.error("[Step 5] NO USER FOUND");
+        throw new Error("No user returned after login");
+      }
 
-      // Step 3: Check for existing profile
-      const { data: existingProfile, error: profileFetchError } = await supabase
+      const user = userData.user;
+      console.log("[Step 5] USER CONFIRMED:", {
+        id: user.id,
+        email: user.email,
+      });
+
+      // Step 5: Query profiles table
+      console.log("[Step 6] Querying profiles table for user.id:", user.id);
+      console.log("[Step 6] Query: SELECT * FROM profiles WHERE id =", user.id);
+
+      const profileQuery = await supabase
         .from("profiles")
-        .select("id, email, role, full_name")
+        .select("*")
         .eq("id", user.id)
         .maybeSingle();
 
-      console.log("[AdminLogin] Existing profile:", existingProfile);
-      console.log("[AdminLogin] Profile fetch error:", profileFetchError);
+      console.log("[Step 6] PROFILE QUERY RESULT:", {
+        data: profileQuery.data,
+        error: profileQuery.error ? {
+          message: profileQuery.error.message,
+          code: profileQuery.error.code,
+          details: profileQuery.error.details,
+          hint: profileQuery.error.hint,
+        } : null,
+      });
 
-      // Determine the role based on email
-      const isAdminEmail = user.email?.toLowerCase() === ADMIN_EMAIL.toLowerCase();
-      const role = isAdminEmail ? "admin" : "customer";
+      // If there's an RLS error, it will show here
+      if (profileQuery.error) {
+        console.error("[Step 6] RLS/QUERY ERROR:", profileQuery.error);
+        throw new Error(`Profile query failed: ${profileQuery.error.message} (code: ${profileQuery.error.code})`);
+      }
 
-      let profile = existingProfile;
+      let profile = profileQuery.data;
 
-      // Step 4: Create or update profile if needed
-      if (!existingProfile) {
-        console.log("[AdminLogin] Profile not found, creating new profile with role:", role);
+      // Step 6: If no profile, try to create one
+      if (!profile) {
+        console.log("[Step 7] NO PROFILE FOUND - attempting to create...");
 
-        // Use upsert to create profile
-        const { data: newProfile, error: upsertError } = await supabase
+        const isAdminEmail = user.email?.toLowerCase() === ADMIN_EMAIL.toLowerCase();
+        const role = isAdminEmail ? "admin" : "customer";
+
+        console.log("[Step 7] Creating profile with:", {
+          id: user.id,
+          email: user.email,
+          role: role,
+        });
+
+        const upsertResult = await supabase
           .from("profiles")
           .upsert({
             id: user.id,
             email: user.email || email.trim().toLowerCase(),
             full_name: user.user_metadata?.full_name || email.split("@")[0],
             role: role,
-          }, {
-            onConflict: "id",
-          })
+          }, { onConflict: "id" })
           .select()
           .maybeSingle();
 
-        if (upsertError) {
-          console.error("[AdminLogin] Profile upsert error:", upsertError);
-          // If upsert failed due to RLS, try with RPC or continue anyway
-          // The trigger should have created the profile
-        }
+        console.log("[Step 7] UPSERT RESULT:", {
+          data: upsertResult.data,
+          error: upsertResult.error ? {
+            message: upsertResult.error.message,
+            code: upsertResult.error.code,
+          } : null,
+        });
 
-        profile = newProfile || existingProfile;
-        console.log("[AdminLogin] Upserted profile:", profile);
-      } else if (existingProfile.role !== role && isAdminEmail) {
-        // Update role if admin email has wrong role
-        console.log("[AdminLogin] Updating admin role");
+        if (upsertResult.error) {
+          console.error("[Step 7] UPSERT FAILED:", upsertResult.error);
+          // Try fetching again - trigger might have created it
+          console.log("[Step 7] Retrying fetch after upsert failure...");
+          const retryResult = await supabase
+            .from("profiles")
+            .select("*")
+            .eq("id", user.id)
+            .maybeSingle();
 
-        const { data: updatedProfile, error: updateError } = await supabase
-          .from("profiles")
-          .update({ role: "admin" })
-          .eq("id", user.id)
-          .select()
-          .maybeSingle();
-
-        if (!updateError) {
-          profile = updatedProfile;
+          if (retryResult.data) {
+            profile = retryResult.data;
+            console.log("[Step 7] RETRY SUCCESS - found profile:", profile);
+          } else {
+            throw new Error(`Failed to create profile: ${upsertResult.error.message}`);
+          }
+        } else {
+          profile = upsertResult.data;
         }
       }
 
-      // Step 5: Verify admin role
+      console.log("[Step 8] FINAL PROFILE:", profile);
+
+      // Step 7: Verify admin role
       if (!profile) {
-        // Profile might have been created by trigger, fetch again
-        const { data: refetchedProfile } = await supabase
-          .from("profiles")
-          .select("id, email, role, full_name")
-          .eq("id", user.id)
-          .maybeSingle();
-
-        profile = refetchedProfile;
-        console.log("[AdminLogin] Refetched profile:", profile);
+        console.error("[Step 8] NO PROFILE AFTER ALL ATTEMPTS");
+        throw new Error("Could not load or create user profile. Please contact support.");
       }
 
-      // Step 6: Check admin access
-      if (!profile || profile.role !== "admin") {
-        console.error("[AdminLogin] Access denied. Profile role:", profile?.role);
+      if (profile.role !== "admin") {
+        console.error("[Step 8] NOT ADMIN - role is:", profile.role);
         await supabase.auth.signOut();
-        throw new Error("Access Denied. Admin privileges required.");
+        throw new Error(`Access Denied. Your role is "${profile.role}", but admin access is required.`);
       }
 
-      console.log("[AdminLogin] Login successful. Redirecting to admin dashboard.");
-
-      // Step 7: Refresh context and navigate
+      console.log("[Step 9] LOGIN SUCCESS - refreshing profile and navigating...");
       await refreshProfile();
       onNavigate("admin");
 
+      console.log("========== ADMIN LOGIN END ==========");
+
     } catch (err: any) {
-      console.error("[AdminLogin] Error:", err);
+      console.error("========== LOGIN ERROR ==========");
+      console.error("Error object:", err);
+      console.error("Error message:", err.message);
+      console.error("Error stack:", err.stack);
       setError(err.message || "Login failed. Please try again.");
     } finally {
       setLoading(false);
@@ -145,7 +203,6 @@ export default function AdminLogin({ onNavigate }: AdminLoginProps) {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center px-4 py-12 relative overflow-hidden">
-      {/* Background pattern */}
       <div className="absolute inset-0 opacity-5">
         <div
           className="absolute inset-0"
@@ -157,7 +214,6 @@ export default function AdminLogin({ onNavigate }: AdminLoginProps) {
       </div>
 
       <div className="w-full max-w-sm relative">
-        {/* Logo */}
         <div className="text-center mb-8">
           <div className="w-16 h-16 bg-gradient-to-br from-gov-main to-gov-dark rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-2xl ring-1 ring-white/10">
             <Lock className="w-8 h-8 text-white" />
@@ -170,7 +226,7 @@ export default function AdminLogin({ onNavigate }: AdminLoginProps) {
           {error && (
             <div className="flex items-center gap-2 bg-red-900/30 border border-red-700/40 text-red-400 rounded-xl px-4 py-3 mb-5 text-sm">
               <AlertCircle className="w-4 h-4 shrink-0" />
-              <span>{error}</span>
+              <span className="break-words">{error}</span>
             </div>
           )}
 
