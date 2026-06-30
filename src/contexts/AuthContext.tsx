@@ -58,13 +58,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
   const [loading, setLoading] = useState(true);
 
-  const fetchProfile = async (uid: string) => {
-    const { data } = await supabase.from('profiles').select('*').eq('id', uid).maybeSingle();
+  const fetchProfile = async (uid: string): Promise<Profile | null> => {
+    console.log("[AuthContext] Fetching profile for user:", uid);
+    const { data, error } = await supabase.from('profiles').select('*').eq('id', uid).maybeSingle();
+    if (error) {
+      console.error("[AuthContext] Error fetching profile:", error);
+    }
+    console.log("[AuthContext] Fetched profile:", data);
     setProfile(data);
+    return data;
   };
 
   const refreshProfile = async () => {
-    if (adminUser) await fetchProfile(adminUser.id);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      await fetchProfile(user.id);
+    } else if (adminUser) {
+      await fetchProfile(adminUser.id);
+    }
   };
 
   // Validate stored customer session against DB on mount

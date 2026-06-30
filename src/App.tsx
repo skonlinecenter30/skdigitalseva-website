@@ -13,10 +13,17 @@ import AdminDashboard from './pages/AdminDashboard';
 import AboutPage from './pages/AboutPage';
 import ProcessPage from './pages/ProcessPage';
 
-// Detect /admin URL path
+// Detect URL path
 function getInitialPage(): string {
   const path = window.location.pathname;
   if (path === '/admin' || path === '/admin/') return 'admin-login';
+  if (path === '/admin/dashboard') return 'admin';
+  if (path === '/dashboard') return 'dashboard';
+  if (path === '/login') return 'login';
+  if (path === '/apply') return 'apply';
+  if (path === '/track') return 'track';
+  if (path === '/about') return 'about';
+  if (path === '/process') return 'process';
   return 'home';
 }
 
