@@ -134,15 +134,26 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
   };
 
   const getDownloadUrl = async (path: string): Promise<string | null> => {
+    // The documents bucket is public, so getPublicUrl works without RLS.
+    const { data: pubData } = supabase.storage.from('documents').getPublicUrl(path);
+    if (pubData?.publicUrl) {
+      return pubData.publicUrl;
+    }
+
+    // Fallback: try createSignedUrl
     try {
       const { data, error } = await supabase.storage.from('documents').createSignedUrl(path, 3600);
-      if (error || !data?.signedUrl) {
-        console.error('Error creating signed URL:', error?.message);
+      if (error) {
+        console.error('[getDownloadUrl] createSignedUrl error:', error.message, '| path:', path);
+        return null;
+      }
+      if (!data?.signedUrl) {
+        console.error('[getDownloadUrl] createSignedUrl returned no URL for path:', path);
         return null;
       }
       return data.signedUrl;
-    } catch (err) {
-      console.error('Error creating signed URL:', err);
+    } catch (err: any) {
+      console.error('[getDownloadUrl] createSignedUrl exception:', err?.message || err, '| path:', path);
       return null;
     }
   };
@@ -152,7 +163,7 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
     if (url) {
       window.open(url, '_blank', 'noopener,noreferrer');
     } else {
-      alert('Could not generate a view link for this document. Please try again.');
+      alert('Could not generate a view link for this document. Check the browser console for the exact error.');
     }
   };
 
@@ -162,11 +173,13 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
       const a = document.createElement('a');
       a.href = url;
       a.download = fileName;
+      a.target = '_blank';
+      a.rel = 'noopener,noreferrer';
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
     } else {
-      alert('Could not generate a download link for this document. Please try again.');
+      alert('Could not generate a download link for this document. Check the browser console for the exact error.');
     }
   };
 
