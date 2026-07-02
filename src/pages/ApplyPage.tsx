@@ -26,7 +26,21 @@ export default function ApplyPage({ defaultService, onNavigate }: ApplyPageProps
   const [appNumber, setAppNumber] = useState('');
   const [files, setFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState('');
+  const [uploadSuccess, setUploadSuccess] = useState('');
+  const [uploadedDocs, setUploadedDocs] = useState<{name: string; size: number}[]>([]);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+  const ACCEPTED_TYPES = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'];
+
+  const validateFile = (f: File): string | null => {
+    if (f.size > MAX_FILE_SIZE) return `${f.name} exceeds 5MB limit`;
+    const ext = f.name.split('.').pop()?.toLowerCase() || '';
+    if (!['pdf', 'jpg', 'jpeg', 'png'].includes(ext)) return `${f.name}: only PDF, JPG, PNG allowed`;
+    if (f.type && !ACCEPTED_TYPES.includes(f.type) && f.type !== '') return `${f.name}: unsupported file type`;
+    return null;
+  };
 
   const [form, setForm] = useState({
     applicant_name:   customerSession?.full_name || '',
@@ -101,25 +115,65 @@ export default function ApplyPage({ defaultService, onNavigate }: ApplyPageProps
   };
 
   const handleDocUpload = async () => {
-    if(files.length === 0){ setStep('success'); return; }
-    setUploading(true);
-    for(const f of files){
-      const path = `customer/${customerSession?.phone || 'anon'}/${appId}/${Date.now()}_${f.name}`;
-      const {error: upErr} = await supabase.storage.from('documents').upload(path, f, {upsert:false});
-      if(!upErr){
-        await supabase.from('documents').insert({
-          application_id: appId,
-          document_type:'uploaded',
-          file_name: f.name,
-          file_path: path,
-          file_size: f.size,
-          mime_type: f.type,
-          user_id: null, // No user_id for phone-based customers
-        });
-      }
+    setUploadError('');
+    setUploadSuccess('');
+    if (files.length === 0) { setStep('success'); return; }
+
+    // Validate all files first
+    const invalid = files.map(validateFile).filter(Boolean);
+    if (invalid.length > 0) {
+      setUploadError(invalid.join('; '));
+      return;
     }
+
+    setUploading(true);
+    const phone = customerSession?.phone || 'anon';
+    let successCount = 0;
+    const errors: string[] = [];
+    const newDocs: { name: string; size: number }[] = [];
+
+    for (const f of files) {
+      const path = `customer/${phone}/${appId}/${Date.now()}_${f.name}`;
+      const { error: upErr } = await supabase.storage.from('documents').upload(path, f, { upsert: false });
+      if (upErr) {
+        errors.push(`${f.name}: ${upErr.message}`);
+        continue;
+      }
+      const { data: pubData } = supabase.storage.from('documents').getPublicUrl(path);
+      const fileUrl = pubData?.publicUrl || '';
+      const { error: dbErr } = await supabase.from('documents').insert({
+        application_id: appId,
+        document_name: f.name.replace(/\.[^.]+$/, ''),
+        document_type: 'uploaded',
+        file_name: f.name,
+        file_path: path,
+        file_url: fileUrl,
+        file_size: f.size,
+        mime_type: f.type,
+        user_id: null,
+      });
+      if (dbErr) {
+        errors.push(`${f.name}: ${dbErr.message}`);
+        continue;
+      }
+      successCount++;
+      newDocs.push({ name: f.name, size: f.size });
+    }
+
     setUploading(false);
-    setStep('success');
+
+    if (errors.length > 0) {
+      setUploadError(errors.join('; '));
+    }
+    if (successCount > 0) {
+      setUploadSuccess(`${successCount} document${successCount > 1 ? 's' : ''} uploaded successfully!`);
+      setUploadedDocs(prev => [...prev, ...newDocs]);
+      setFiles([]);
+      if (fileRef.current) fileRef.current.value = '';
+    }
+    if (errors.length === 0 && successCount > 0) {
+      setTimeout(() => setStep('success'), 1200);
+    }
   };
 
   const stepIdx = steps.indexOf(step);
@@ -339,7 +393,49 @@ export default function ApplyPage({ defaultService, onNavigate }: ApplyPageProps
                 </p>
                 <p className="text-xs text-slate-400 mt-1">PDF, JPG, PNG (max 5MB each)</p>
               </div>
-              <input ref={fileRef} type="file" multiple accept=".pdf,.jpg,.jpeg,.png" className="hidden" onChange={e=>setFiles(prev=>[...prev,...Array.from(e.target.files||[])])} />
+              <input ref={fileRef} type="file" multiple accept=".pdf,.jpg,.jpeg,.png" className="hidden" onChange={e => {
+                const arr = Array.from(e.target.files || []);
+                const valid = arr.filter(f => !validateFile(f));
+                const invalid = arr.filter(f => validateFile(f));
+                if (invalid.length > 0) setUploadError(invalid.map(f => validateFile(f)!).join('; '));
+                else setUploadError('');
+                setFiles(prev => [...prev, ...valid]);
+              }} />
+
+              {uploadError && (
+                <div className="mt-4 flex items-start gap-2 text-red-600 text-sm bg-red-50 px-4 py-3 rounded-xl">
+                  <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
+                  <span>{uploadError}</span>
+                  <button onClick={() => setUploadError('')} className="ml-auto shrink-0"><X className="w-4 h-4" /></button>
+                </div>
+              )}
+
+              {uploadSuccess && (
+                <div className="mt-4 flex items-start gap-2 text-green-700 text-sm bg-green-50 px-4 py-3 rounded-xl">
+                  <CheckCircle className="w-4 h-4 mt-0.5 shrink-0" />
+                  <span>{uploadSuccess}</span>
+                  <button onClick={() => setUploadSuccess('')} className="ml-auto shrink-0"><X className="w-4 h-4" /></button>
+                </div>
+              )}
+
+              {uploadedDocs.length > 0 && (
+                <div className="mt-4">
+                  <p className={`text-xs font-semibold text-slate-500 mb-2 ${kn ? 'font-kn' : ''}`}>
+                    {kn ? 'ಅಪ್‌ಲೋಡ್ ಮಾಡಲಾದ ದಾಖಲೆಗಳು' : 'Uploaded Documents'} ({uploadedDocs.length})
+                  </p>
+                  <div className="space-y-2">
+                    {uploadedDocs.map((d, i) => (
+                      <div key={i} className="flex items-center gap-3 bg-green-50 border border-green-200 px-4 py-3 rounded-xl">
+                        <CheckCircle className="w-4 h-4 text-green-600 shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-medium text-slate-800 truncate">{d.name}</div>
+                          <div className="text-xs text-slate-400">{(d.size / 1024).toFixed(1)} KB</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {files.length>0 && (
                 <div className="mt-4 space-y-2">

@@ -9,9 +9,11 @@ import { useAuth } from '../contexts/AuthContext';
 
 interface AppDoc {
   id: string;
+  document_name: string | null;
   document_type: string;
   file_name: string;
   file_path: string;
+  file_url: string | null;
   file_size: number | null;
   mime_type: string | null;
   created_at: string;
@@ -54,10 +56,16 @@ export default function AdminDashboard({ onNavigate }: AdminDashboardProps) {
   };
 
   const loadDocs = async (appId: string) => {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('documents')
-      .select('id, document_type, file_name, file_path, file_size, mime_type, created_at')
-      .eq('application_id', appId);
+      .select('id, document_name, document_type, file_name, file_path, file_url, file_size, mime_type, created_at')
+      .eq('application_id', appId)
+      .order('created_at', { ascending: false });
+    if (error) {
+      console.error('Error loading documents:', error.message);
+      setAppDocs([]);
+      return;
+    }
     setAppDocs(data || []);
   };
 
@@ -73,9 +81,41 @@ export default function AdminDashboard({ onNavigate }: AdminDashboardProps) {
     setNoteInput('');
   };
 
-  const getDownloadUrl = (path: string) => {
-    const { data } = supabase.storage.from('documents').createSignedUrl(path, 3600);
-    return data?.signedUrl;
+  const getDownloadUrl = async (path: string): Promise<string | null> => {
+    try {
+      const { data, error } = await supabase.storage.from('documents').createSignedUrl(path, 3600);
+      if (error || !data?.signedUrl) {
+        console.error('Error creating signed URL:', error?.message);
+        return null;
+      }
+      return data.signedUrl;
+    } catch (err) {
+      console.error('Error creating signed URL:', err);
+      return null;
+    }
+  };
+
+  const handleViewDoc = async (doc: AppDoc) => {
+    const url = await getDownloadUrl(doc.file_path);
+    if (url) {
+      window.open(url, '_blank', 'noopener,noreferrer');
+    } else {
+      alert('Could not generate a view link for this document. Please try again.');
+    }
+  };
+
+  const handleDownloadDoc = async (doc: AppDoc) => {
+    const url = await getDownloadUrl(doc.file_path);
+    if (url) {
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = doc.file_name;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    } else {
+      alert('Could not generate a download link for this document. Please try again.');
+    }
   };
 
   if (!adminUser || profile?.role !== 'admin') return (
@@ -338,13 +378,7 @@ export default function AdminDashboard({ onNavigate }: AdminDashboardProps) {
                                 <button
                                   onClick={async () => {
                                     for (const doc of appDocs) {
-                                      const url = getDownloadUrl(doc.file_path);
-                                      if (url) {
-                                        const a = document.createElement('a');
-                                        a.href = url;
-                                        a.download = doc.file_name;
-                                        a.click();
-                                      }
+                                      await handleDownloadDoc(doc);
                                     }
                                   }}
                                   className="text-xs text-gov-main hover:text-gov-dark font-semibold flex items-center gap-1"
@@ -362,30 +396,19 @@ export default function AdminDashboard({ onNavigate }: AdminDashboardProps) {
                                     <div className="flex items-center gap-2 text-sm text-slate-700">
                                       <FileText className="w-4 h-4 text-gov-main" />
                                       <div>
-                                        <div className="font-medium">{doc.file_name}</div>
+                                        <div className="font-medium">{doc.document_name || doc.file_name}</div>
                                         <div className="text-xs text-slate-400">{doc.document_type} - {doc.file_size ? `${(doc.file_size / 1024).toFixed(1)} KB` : ''}</div>
                                       </div>
                                     </div>
                                     <div className="flex items-center gap-2">
                                       <button
-                                        onClick={() => {
-                                          const url = getDownloadUrl(doc.file_path);
-                                          if (url) window.open(url, '_blank');
-                                        }}
+                                        onClick={() => handleViewDoc(doc)}
                                         className="text-xs text-gov-main hover:text-gov-dark font-semibold flex items-center gap-1"
                                       >
                                         <Eye className="w-3.5 h-3.5" />View
                                       </button>
                                       <button
-                                        onClick={async () => {
-                                          const url = getDownloadUrl(doc.file_path);
-                                          if (url) {
-                                            const a = document.createElement('a');
-                                            a.href = url;
-                                            a.download = doc.file_name;
-                                            a.click();
-                                          }
-                                        }}
+                                        onClick={() => handleDownloadDoc(doc)}
                                         className="text-xs text-slate-500 hover:text-slate-700 font-semibold flex items-center gap-1"
                                       >
                                         <Download className="w-3.5 h-3.5" />DL

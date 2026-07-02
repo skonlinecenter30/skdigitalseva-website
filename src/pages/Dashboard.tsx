@@ -9,9 +9,13 @@ import { useAuth } from '../contexts/AuthContext';
 
 interface Doc {
   id: string;
+  document_name: string | null;
   document_type: string;
   file_name: string;
   file_path: string;
+  file_url: string | null;
+  file_size: number | null;
+  mime_type: string | null;
   created_at: string;
 }
 
@@ -45,10 +49,15 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
   };
 
   const loadDocuments = async (appId: string) => {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('documents')
-      .select('id, document_type, file_name, file_path, created_at')
-      .eq('application_id', appId);
+      .select('id, document_name, document_type, file_name, file_path, file_url, file_size, mime_type, created_at')
+      .eq('application_id', appId)
+      .order('created_at', { ascending: false });
+    if (error) {
+      console.error('Error loading documents:', error.message);
+      return;
+    }
     if (data) {
       setDocuments(prev => ({ ...prev, [appId]: data }));
     }
@@ -84,30 +93,81 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
   const handleUploadDocs = async (appId: string) => {
     if (uploadFiles.length === 0) return;
     setUploading(true);
+    let successCount = 0;
+    const errors: string[] = [];
     for (const f of uploadFiles) {
       const path = `customer/${customerSession!.phone}/${appId}/${Date.now()}_${f.name}`;
       const { error: upErr } = await supabase.storage.from('documents').upload(path, f, { upsert: false });
-      if (!upErr) {
-        await supabase.from('documents').insert({
-          application_id: appId,
-          document_type: 'customer_upload',
-          file_name: f.name,
-          file_path: path,
-          file_size: f.size,
-          mime_type: f.type,
-        });
+      if (upErr) {
+        errors.push(`${f.name}: ${upErr.message}`);
+        continue;
       }
+      const { data: pubData } = supabase.storage.from('documents').getPublicUrl(path);
+      const fileUrl = pubData?.publicUrl || '';
+      const { error: dbErr } = await supabase.from('documents').insert({
+        application_id: appId,
+        document_name: f.name.replace(/\.[^.]+$/, ''),
+        document_type: 'customer_upload',
+        file_name: f.name,
+        file_path: path,
+        file_url: fileUrl,
+        file_size: f.size,
+        mime_type: f.type,
+        user_id: null,
+      });
+      if (dbErr) {
+        errors.push(`${f.name}: ${dbErr.message}`);
+        continue;
+      }
+      successCount++;
     }
     setUploading(false);
     setUploadFiles([]);
     setUploadingFor(null);
-    loadApps();
-    loadDocuments(appId);
+    if (errors.length > 0) {
+      alert(`Upload errors: ${errors.join('; ')}`);
+    }
+    if (successCount > 0) {
+      loadApps();
+      loadDocuments(appId);
+    }
   };
 
-  const getDownloadUrl = (path: string) => {
-    const { data } = supabase.storage.from('documents').createSignedUrl(path, 3600);
-    return data?.signedUrl;
+  const getDownloadUrl = async (path: string): Promise<string | null> => {
+    try {
+      const { data, error } = await supabase.storage.from('documents').createSignedUrl(path, 3600);
+      if (error || !data?.signedUrl) {
+        console.error('Error creating signed URL:', error?.message);
+        return null;
+      }
+      return data.signedUrl;
+    } catch (err) {
+      console.error('Error creating signed URL:', err);
+      return null;
+    }
+  };
+
+  const handleViewDoc = async (path: string) => {
+    const url = await getDownloadUrl(path);
+    if (url) {
+      window.open(url, '_blank', 'noopener,noreferrer');
+    } else {
+      alert('Could not generate a view link for this document. Please try again.');
+    }
+  };
+
+  const handleDownloadDoc = async (path: string, fileName: string) => {
+    const url = await getDownloadUrl(path);
+    if (url) {
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    } else {
+      alert('Could not generate a download link for this document. Please try again.');
+    }
   };
 
   const stats = [
@@ -272,29 +332,18 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
                                   <div key={doc.id} className="flex items-center justify-between bg-slate-50 px-3 py-2.5 rounded-lg">
                                     <div className="flex items-center gap-2 text-sm text-slate-700">
                                       <FileText className="w-4 h-4 text-gov-main" />
-                                      <span className="truncate max-w-[180px]">{doc.file_name}</span>
+                                      <span className="truncate max-w-[180px]">{doc.document_name || doc.file_name}</span>
                                     </div>
                                     <div className="flex items-center gap-2">
                                       <button
-                                        onClick={() => {
-                                          const url = getDownloadUrl(doc.file_path);
-                                          if (url) window.open(url, '_blank');
-                                        }}
+                                        onClick={() => handleViewDoc(doc.file_path)}
                                         className="text-xs text-gov-main hover:text-gov-dark font-semibold flex items-center gap-1"
                                       >
                                         <Eye className="w-3.5 h-3.5" />
                                         {kn ? 'ವೀಕ್ಷಿಸಿ' : 'View'}
                                       </button>
                                       <button
-                                        onClick={async () => {
-                                          const url = getDownloadUrl(doc.file_path);
-                                          if (url) {
-                                            const a = document.createElement('a');
-                                            a.href = url;
-                                            a.download = doc.file_name;
-                                            a.click();
-                                          }
-                                        }}
+                                        onClick={() => handleDownloadDoc(doc.file_path, doc.file_name)}
                                         className="text-xs text-slate-500 hover:text-slate-700 font-semibold flex items-center gap-1"
                                       >
                                         <Download className="w-3.5 h-3.5" />
