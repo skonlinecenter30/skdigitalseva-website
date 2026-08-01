@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Shield, FileText, MessageSquare, Star, RefreshCw, CheckCircle,
   Users, TrendingUp, Download, Phone, Mail, LogOut, Eye,
-  Search, Filter, ChevronDown, ChevronUp, X, AlertCircle, Calendar, MapPin, FileDown
+  Search, Filter, ChevronDown, ChevronUp, X, AlertCircle, Calendar, MapPin, FileDown, Upload, Loader2
 } from 'lucide-react';
 import { supabase, Application, Enquiry, Review, SERVICE_INFO, STATUS_META, AppStatus, ServiceType } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
@@ -37,6 +37,20 @@ export default function AdminDashboard({ onNavigate }: AdminDashboardProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [noteInput, setNoteInput] = useState('');
   const [showNoteModal, setShowNoteModal] = useState<string | null>(null);
+  const [adminUploadFiles, setAdminUploadFiles] = useState<File[]>([]);
+  const [adminUploading, setAdminUploading] = useState(false);
+  const [adminUploadError, setAdminUploadError] = useState('');
+  const [adminUploadSuccess, setAdminUploadSuccess] = useState('');
+  const adminFileRef = useRef<HTMLInputElement>(null);
+
+  const MAX_FILE_SIZE = 5 * 1024 * 1024;
+
+  const validateFile = (f: File): string | null => {
+    if (f.size > MAX_FILE_SIZE) return `${f.name} exceeds 5MB limit`;
+    const ext = f.name.split('.').pop()?.toLowerCase() || '';
+    if (!['pdf', 'jpg', 'jpeg', 'png'].includes(ext)) return `${f.name}: only PDF, JPG, PNG allowed`;
+    return null;
+  };
 
   useEffect(() => {
     if (profile?.role === 'admin') load();
@@ -129,6 +143,63 @@ export default function AdminDashboard({ onNavigate }: AdminDashboardProps) {
       document.body.removeChild(a);
     } else {
       alert(`Could not generate a download link for "${doc.file_name}". Check the browser console for the exact error.`);
+    }
+  };
+
+  const handleAdminUpload = async (appId: string) => {
+    setAdminUploadError('');
+    setAdminUploadSuccess('');
+    if (adminUploadFiles.length === 0) return;
+
+    const invalid = adminUploadFiles.map(validateFile).filter(Boolean);
+    if (invalid.length > 0) {
+      setAdminUploadError(invalid.join('; '));
+      return;
+    }
+
+    setAdminUploading(true);
+    let successCount = 0;
+    const errors: string[] = [];
+
+    for (const f of adminUploadFiles) {
+      const path = `admin/${appId}/${Date.now()}_${f.name}`;
+      const { error: upErr } = await supabase.storage.from('documents').upload(path, f, { upsert: false });
+      if (upErr) {
+        console.error('[AdminUpload] Storage upload error:', upErr.message, '| code:', upErr.code, '| file:', f.name, '| path:', path);
+        errors.push(`${f.name}: ${upErr.message}`);
+        continue;
+      }
+      const { data: pubData } = supabase.storage.from('documents').getPublicUrl(path);
+      const fileUrl = pubData?.publicUrl || '';
+      const { error: dbErr } = await supabase.from('documents').insert({
+        application_id: appId,
+        document_name: f.name.replace(/\.[^.]+$/, ''),
+        document_type: 'admin_upload',
+        file_name: f.name,
+        file_path: path,
+        file_url: fileUrl,
+        file_size: f.size,
+        mime_type: f.type,
+        user_id: adminUser?.id || null,
+      });
+      if (dbErr) {
+        console.error('[AdminUpload] DB insert error:', dbErr.message, '| code:', dbErr.code, '| file:', f.name);
+        errors.push(`${f.name}: ${dbErr.message}`);
+        continue;
+      }
+      successCount++;
+    }
+
+    setAdminUploading(false);
+    setAdminUploadFiles([]);
+    if (adminFileRef.current) adminFileRef.current.value = '';
+
+    if (errors.length > 0) {
+      setAdminUploadError(errors.join('; '));
+    }
+    if (successCount > 0) {
+      setAdminUploadSuccess(`${successCount} document${successCount > 1 ? 's' : ''} uploaded successfully!`);
+      loadDocs(appId);
     }
   };
 
@@ -431,6 +502,86 @@ export default function AdminDashboard({ onNavigate }: AdminDashboardProps) {
                                   </div>
                                 ))}
                               </div>
+                            )}
+                          </div>
+
+                          {/* Admin Upload Section */}
+                          <div className="bg-white rounded-xl border border-slate-200 p-4">
+                            <h4 className="font-semibold text-slate-700 text-sm mb-3 flex items-center gap-2">
+                              <Upload className="w-4 h-4 text-gov-main" />
+                              Upload Documents (Admin)
+                            </h4>
+                            <div
+                              onClick={() => adminFileRef.current?.click()}
+                              className="border-2 border-dashed border-slate-200 rounded-xl p-4 text-center cursor-pointer hover:border-gov-main hover:bg-gov-main/5 transition-all"
+                            >
+                              <Upload className="w-6 h-6 text-slate-300 mx-auto mb-2" />
+                              <p className="text-xs text-slate-500">
+                                Click to select files
+                                <span className="text-slate-400 block mt-0.5">PDF, JPG, JPEG, PNG - Max 5MB each</span>
+                              </p>
+                              <input
+                                ref={adminFileRef}
+                                type="file"
+                                multiple
+                                accept=".pdf,.jpg,.jpeg,.png"
+                                className="hidden"
+                                onChange={e => {
+                                  const arr = Array.from(e.target.files || []);
+                                  const valid = arr.filter(f => !validateFile(f));
+                                  const invalid = arr.filter(f => validateFile(f));
+                                  if (invalid.length > 0) setAdminUploadError(invalid.map(f => validateFile(f)!).join('; '));
+                                  else setAdminUploadError('');
+                                  setAdminUploadFiles(prev => [...prev, ...valid]);
+                                }}
+                              />
+                            </div>
+
+                            {adminUploadFiles.length > 0 && (
+                              <div className="mt-3 space-y-1.5">
+                                {adminUploadFiles.map((f, i) => (
+                                  <div key={i} className="flex items-center justify-between bg-slate-50 px-3 py-2 rounded-lg text-xs">
+                                    <span className="text-slate-700 truncate flex-1">{f.name}</span>
+                                    <span className="text-slate-400 ml-2 shrink-0">{(f.size / 1024).toFixed(1)} KB</span>
+                                    <button
+                                      onClick={() => setAdminUploadFiles(prev => prev.filter((_, idx) => idx !== i))}
+                                      className="text-red-400 hover:text-red-600 ml-2 shrink-0"
+                                    >
+                                      <X className="w-3.5 h-3.5" />
+                                    </button>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+
+                            {adminUploadError && (
+                              <div className="mt-3 flex items-start gap-2 text-red-600 text-xs bg-red-50 px-3 py-2.5 rounded-lg">
+                                <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
+                                <span className="flex-1">{adminUploadError}</span>
+                                <button onClick={() => setAdminUploadError('')} className="shrink-0"><X className="w-3.5 h-3.5" /></button>
+                              </div>
+                            )}
+
+                            {adminUploadSuccess && (
+                              <div className="mt-3 flex items-start gap-2 text-green-700 text-xs bg-green-50 px-3 py-2.5 rounded-lg">
+                                <CheckCircle className="w-4 h-4 mt-0.5 shrink-0" />
+                                <span className="flex-1">{adminUploadSuccess}</span>
+                                <button onClick={() => setAdminUploadSuccess('')} className="shrink-0"><X className="w-3.5 h-3.5" /></button>
+                              </div>
+                            )}
+
+                            {adminUploadFiles.length > 0 && (
+                              <button
+                                onClick={() => handleAdminUpload(app.id)}
+                                disabled={adminUploading}
+                                className="w-full mt-3 py-2.5 bg-gov-main hover:bg-gov-dark text-white rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                              >
+                                {adminUploading ? (
+                                  <><Loader2 className="w-4 h-4 animate-spin" />Uploading...</>
+                                ) : (
+                                  <><Upload className="w-4 h-4" />Upload {adminUploadFiles.length} File{adminUploadFiles.length > 1 ? 's' : ''}</>
+                                )}
+                              </button>
                             )}
                           </div>
 
