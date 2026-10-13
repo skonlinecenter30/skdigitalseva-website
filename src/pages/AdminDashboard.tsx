@@ -95,54 +95,44 @@ export default function AdminDashboard({ onNavigate }: AdminDashboardProps) {
     setNoteInput('');
   };
 
-  const getDownloadUrl = async (path: string): Promise<string | null> => {
-    // The documents bucket is public, so getPublicUrl works without RLS.
-    // This is the most reliable path — no signed-URL RLS issues.
-    const { data: pubData } = supabase.storage.from('documents').getPublicUrl(path);
-    if (pubData?.publicUrl) {
-      return pubData.publicUrl;
-    }
-
-    // Fallback: try createSignedUrl (requires storage RLS SELECT permission)
-    try {
-      const { data, error } = await supabase.storage.from('documents').createSignedUrl(path, 3600);
-      if (error) {
-        console.error('[getDownloadUrl] createSignedUrl error:', error.message, '| code:', error.code, '| path:', path);
-        return null;
-      }
-      if (!data?.signedUrl) {
-        console.error('[getDownloadUrl] createSignedUrl returned no URL for path:', path);
-        return null;
-      }
-      return data.signedUrl;
-    } catch (err: any) {
-      console.error('[getDownloadUrl] createSignedUrl exception:', err?.message || err, '| path:', path);
-      return null;
-    }
-  };
-
   const handleViewDoc = async (doc: AppDoc) => {
-    const url = await getDownloadUrl(doc.file_path);
-    if (url) {
-      window.open(url, '_blank', 'noopener,noreferrer');
-    } else {
-      alert(`Could not generate a view link for "${doc.file_name}". Check the browser console for the exact error.`);
+    if (!doc.file_path) {
+      alert('This document has no file path stored. The upload may have failed.');
+      return;
     }
+    const { data, error } = await supabase.storage.from('documents').createSignedUrl(doc.file_path, 3600);
+    if (error || !data?.signedUrl) {
+      console.error('[handleViewDoc] Signed URL error:', error?.message, '| path:', doc.file_path);
+      alert(`Could not open "${doc.file_name}". ${error?.message || 'No URL generated.'}`);
+      return;
+    }
+    window.open(data.signedUrl, '_blank', 'noopener,noreferrer');
   };
 
   const handleDownloadDoc = async (doc: AppDoc) => {
-    const url = await getDownloadUrl(doc.file_path);
-    if (url) {
+    if (!doc.file_path) {
+      alert('This document has no file path stored. The upload may have failed.');
+      return;
+    }
+    try {
+      const { data, error } = await supabase.storage.from('documents').download(doc.file_path);
+      if (error) {
+        console.error('[handleDownloadDoc] Download error:', error.message, '| code:', error.code, '| path:', doc.file_path);
+        alert(`Could not download "${doc.file_name}". ${error.message}`);
+        return;
+      }
+      const blob = data as Blob;
+      const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = doc.file_name;
-      a.target = '_blank';
-      a.rel = 'noopener,noreferrer';
+      a.download = doc.file_name || 'document';
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-    } else {
-      alert(`Could not generate a download link for "${doc.file_name}". Check the browser console for the exact error.`);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (err: any) {
+      console.error('[handleDownloadDoc] Exception:', err?.message || err, '| path:', doc.file_path);
+      alert(`Could not download "${doc.file_name}". ${err?.message || 'Unknown error.'}`);
     }
   };
 
