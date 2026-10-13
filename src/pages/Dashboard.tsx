@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   FileText, Clock, CheckCircle, Plus, ArrowRight, RefreshCw,
   Search, MapPin, Phone, Upload, X, LogOut, ChevronDown, ChevronUp,
-  Download, ExternalLink, AlertCircle, Calendar, Eye
+  Download, ExternalLink, AlertCircle, Calendar, Eye, Loader2
 } from 'lucide-react';
 import { supabase, Application, SERVICE_INFO, STATUS_META, AppStatus, ServiceType } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
@@ -33,8 +33,18 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
   const [uploadingFor, setUploadingFor] = useState<string | null>(null);
   const [uploadFiles, setUploadFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState('');
+  const [uploadSuccess, setUploadSuccess] = useState('');
   const [viewingDocs, setViewingDocs] = useState<string | null>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
+  const fileRefs = useRef<Record<string, HTMLInputElement | null>>({});
+
+  const MAX_FILE_SIZE = 5 * 1024 * 1024;
+  const validateFile = (f: File): string | null => {
+    if (f.size > MAX_FILE_SIZE) return `${f.name} exceeds 5MB limit`;
+    const ext = f.name.split('.').pop()?.toLowerCase() || '';
+    if (!['pdf', 'jpg', 'jpeg', 'png'].includes(ext)) return `${f.name}: only PDF, JPG, PNG allowed`;
+    return null;
+  };
 
   const loadApps = async () => {
     if (!customerSession) return;
@@ -91,7 +101,16 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
   };
 
   const handleUploadDocs = async (appId: string) => {
+    setUploadError('');
+    setUploadSuccess('');
     if (uploadFiles.length === 0) return;
+
+    const invalid = uploadFiles.map(validateFile).filter(Boolean);
+    if (invalid.length > 0) {
+      setUploadError(invalid.join('; '));
+      return;
+    }
+
     setUploading(true);
     let successCount = 0;
     const errors: string[] = [];
@@ -99,6 +118,7 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
       const path = `customer/${customerSession!.phone}/${appId}/${Date.now()}_${f.name}`;
       const { error: upErr } = await supabase.storage.from('documents').upload(path, f, { upsert: false });
       if (upErr) {
+        console.error('[CustomerUpload] Storage error:', upErr.message, '| file:', f.name, '| path:', path);
         errors.push(`${f.name}: ${upErr.message}`);
         continue;
       }
@@ -116,6 +136,7 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
         user_id: null,
       });
       if (dbErr) {
+        console.error('[CustomerUpload] DB insert error:', dbErr.message, '| file:', f.name);
         errors.push(`${f.name}: ${dbErr.message}`);
         continue;
       }
@@ -124,11 +145,13 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
     setUploading(false);
     setUploadFiles([]);
     setUploadingFor(null);
+    const ref = fileRefs.current[appId];
+    if (ref) ref.value = '';
     if (errors.length > 0) {
-      alert(`Upload errors: ${errors.join('; ')}`);
+      setUploadError(errors.join('; '));
     }
     if (successCount > 0) {
-      loadApps();
+      setUploadSuccess(`${successCount} document${successCount > 1 ? 's' : ''} uploaded!`);
       loadDocuments(appId);
     }
   };
@@ -375,25 +398,47 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
                                 {kn ? 'ದಾಖಲೆಗಳನ್ನು ಅಪ್‌ಲೋಡ್ ಮಾಡಿ:' : 'Upload Documents:'}
                               </p>
                               <div
-                                onClick={() => fileRef.current?.click()}
+                                onClick={() => fileRefs.current[app.id]?.click()}
                                 className="border-2 border-dashed border-slate-200 hover:border-gov-main rounded-xl p-5 text-center cursor-pointer transition-colors group"
                               >
                                 <Upload className="w-6 h-6 text-slate-300 group-hover:text-gov-main mx-auto mb-1.5 transition-colors" />
                                 <p className={`text-sm text-slate-500 ${kn ? 'font-kn' : ''}`}>
                                   {kn ? 'PDF, JPG, PNG ಕ್ಲಿಕ್ ಮಾಡಿ ಅಥವಾ ಡ್ರಾಪ್ ಮಾಡಿ' : 'Click or drop PDF, JPG, PNG'}
                                 </p>
+                                <p className="text-xs text-slate-400 mt-0.5">Max 5MB each</p>
                               </div>
                               <input
-                                ref={fileRef}
+                                ref={el => { fileRefs.current[app.id] = el; }}
                                 type="file"
                                 multiple
                                 accept=".pdf,.jpg,.jpeg,.png"
                                 className="hidden"
                                 onChange={e => {
-                                  setUploadFiles(prev => [...prev, ...Array.from(e.target.files || [])]);
+                                  const arr = Array.from(e.target.files || []);
+                                  const valid = arr.filter(f => !validateFile(f));
+                                  const invalid = arr.filter(f => validateFile(f));
+                                  if (invalid.length > 0) setUploadError(invalid.map(f => validateFile(f)!).join('; '));
+                                  else setUploadError('');
+                                  setUploadFiles(valid);
                                   setUploadingFor(app.id);
                                 }}
                               />
+                              {uploadError && uploadingFor === app.id && (
+                                <div className="mt-3 flex items-start gap-2 text-red-600 text-sm bg-red-50 px-3 py-2.5 rounded-lg">
+                                  <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
+                                  <span className="flex-1">{uploadError}</span>
+                                  <button onClick={() => setUploadError('')} className="shrink-0"><X className="w-3.5 h-3.5" /></button>
+                                </div>
+                              )}
+
+                              {uploadSuccess && uploadingFor === app.id && (
+                                <div className="mt-3 flex items-start gap-2 text-green-700 text-sm bg-green-50 px-3 py-2.5 rounded-lg">
+                                  <CheckCircle className="w-4 h-4 mt-0.5 shrink-0" />
+                                  <span className="flex-1">{uploadSuccess}</span>
+                                  <button onClick={() => setUploadSuccess('')} className="shrink-0"><X className="w-3.5 h-3.5" /></button>
+                                </div>
+                              )}
+
                               {uploadFiles.length > 0 && uploadingFor === app.id && (
                                 <div className="mt-3 space-y-1.5">
                                   {uploadFiles.map((f, i) => (
@@ -415,7 +460,7 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
                                     className="btn-primary w-full mt-2 py-2.5 text-sm"
                                   >
                                     {uploading ? (
-                                      <><RefreshCw className="w-4 h-4 animate-spin" /><span className={kn ? 'font-kn' : ''}>{kn ? 'ಅಪ್‌ಲೋಡ್...' : 'Uploading...'}</span></>
+                                      <><Loader2 className="w-4 h-4 animate-spin" /><span className={kn ? 'font-kn' : ''}>{kn ? 'ಅಪ್‌ಲೋಡ್...' : 'Uploading...'}</span></>
                                     ) : (
                                       <><Upload className="w-4 h-4" /><span className={kn ? 'font-kn' : ''}>{kn ? 'ದಾಖಲೆ ಅಪ್‌ಲೋಡ್ ಮಾಡಿ' : 'Upload Documents'}</span></>
                                     )}

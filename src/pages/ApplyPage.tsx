@@ -457,7 +457,7 @@ export default function ApplyPage({ defaultService, onNavigate }: ApplyPageProps
               )}
 
               <div className="flex gap-3 mt-6">
-                <button onClick={handleDocUpload} disabled={uploading} className="btn-secondary flex-1">
+                <button onClick={() => setStep('success')} disabled={uploading} className="btn-secondary flex-1">
                   {kn?'ನಂತರ ಅಪ್‌ಲೋಡ್ ಮಾಡಿ':'Upload Later'}
                 </button>
                 <button onClick={handleDocUpload} disabled={uploading} className="btn-primary flex-1">
